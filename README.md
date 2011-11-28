@@ -1,9 +1,10 @@
 # Light Untar for iOS
 ## Purpose
-###What this code will do:
+### What this code will do:
 * Extract files and directories created with the tar -cf command
 * Work with 512 block or multiple (tar -b512 or just tar)
-###What this code will not do:
+
+### What this code will not do:
 * Extract compressed files and directories created with the tar -czf command
 * Work with unix right and ownership
 * Work with no standard block size
