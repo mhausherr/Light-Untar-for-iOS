@@ -59,6 +59,8 @@
 
 - (void)createFilesAndDirectoriesAtPath:(NSString*)path withTarData:(NSData*)tarData error:(NSError**)pError
 {
+    [self createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:pError]; //Create path on filesystem
+
     long tarSize = [tarData length]; // size of file
     long location = 0; // Position in the file
     while (location<tarSize) {       
