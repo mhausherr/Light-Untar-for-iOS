@@ -40,6 +40,10 @@
 #define TAR_SIZE_POSITION 124
 #define TAR_SIZE_SIZE 12
 
+// Error const
+#define TAR_ERROR_DOMAIN @"com.lightuntar"
+#define TAR_ERROR_CODE_BAD_BLOCK 1
+
 
 #pragma mark - Private Methods
 @interface NSFileManager(Tar_Private)
@@ -59,8 +63,8 @@
 
 - (void)createFilesAndDirectoriesAtPath:(NSString*)path withTarData:(NSData*)tarData error:(NSError**)pError
 {
-    [self createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:pError]; //Create path on filesystem
-
+    [self createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil]; //Create path on filesystem
+    
     long tarSize = [tarData length]; // size of file
     long location = 0; // Position in the file
     while (location<tarSize) {       
@@ -90,14 +94,38 @@
                 NSLog(@"UNTAR - directory - %@",name); 
 #endif
                 NSString *directoryPath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
-                [self createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:pError]; //Write the directory on filesystem
+                [self createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:nil]; //Write the directory on filesystem
                 break;
             }
-            default: // It's not a file neither a directory
+            case '\0': // It's a nul block
+            {
 #ifdef TAR_VERBOSE_LOG_MODE
                 NSLog(@"UNTAR - empty block"); 
 #endif
                 break;
+            }
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '6':
+            case '7':
+            case 'x':
+            case 'g': // It's not a file neither a directory
+            {
+#ifdef TAR_VERBOSE_LOG_MODE
+                NSLog(@"UNTAR - unsupported block"); 
+#endif
+                long size = [NSFileManager sizeForData:tarData withOffset:location];
+                blockCount += (size-1)/TAR_BLOCK_SIZE+1; // size/TAR_BLOCK_SIZE rounded up
+            }          
+            default: // It's not a tar type
+            {
+                NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Invalid block type found" 
+                                                                     forKey:NSLocalizedDescriptionKey];
+                *pError = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_BAD_BLOCK userInfo:userInfo];
+                return;
+            }
         }
         
         location+=blockCount*TAR_BLOCK_SIZE;
