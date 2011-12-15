@@ -30,5 +30,6 @@
 
 - (void)createFilesAndDirectoriesAtURL:(NSURL*)url withTarData:(NSData*)tarData error:(NSError**)error;
 - (void)createFilesAndDirectoriesAtPath:(NSString*)path withTarData:(NSData*)tarData error:(NSError**)error;
+- (void)createFilesAndDirectoriesAtPath:(NSString*)path withTarPath:(NSString*)tarPath error:(NSError**)error;
 
 @end

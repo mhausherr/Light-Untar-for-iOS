@@ -47,10 +47,13 @@
 
 #pragma mark - Private Methods
 @interface NSFileManager(Tar_Private)
-+ (char)typeForData:(NSData*)data withOffset:(int)offset;
-+ (NSString*)nameForData:(NSData*)data withOffset:(int)offset;
-+ (int)sizeForData:(NSData*)data withOffset:(int)offset;
-+ (NSData*)fileDataForData:(NSData*)data withLength:(int)length withOffset:(int)offset;
+-(void)createFilesAndDirectoriesAtPath:(NSString *)path withTarObject:(id)object size:(int)size error:(NSError **)error;
+
++ (char)typeForObject:(id)object atOffset:(int)offset;
++ (NSString*)nameForObject:(id)object atOffset:(int)offset;
++ (int)sizeForObject:(id)object atOffset:(int)offset;
++ (NSData*)fileDataForObject:(id)object inRange:(NSRange)range;
++ (NSData*)dataForObject:(id)object inRange:(NSRange)range;
 @end
 
 #pragma mark - Implementation
@@ -61,35 +64,53 @@
     [self createFilesAndDirectoriesAtPath:[url path] withTarData:tarData error:error];
 }
 
-- (void)createFilesAndDirectoriesAtPath:(NSString*)path withTarData:(NSData*)tarData error:(NSError**)pError
+- (void)createFilesAndDirectoriesAtPath:(NSString*)path withTarData:(NSData*)tarData error:(NSError**)error
 {
+    [self createFilesAndDirectoriesAtPath:path withTarObject:tarData size:[tarData length] error:error];
+}
+
+-(void)createFilesAndDirectoriesAtPath:(NSString *)path withTarPath:(NSString *)tarPath error:(NSError **)error
+{
+    NSFileManager * filemanager = [[NSFileManager alloc]init];
+    if([filemanager fileExistsAtPath:path]){
+        NSDictionary * attributes = [filemanager attributesOfItemAtPath:path error:nil];        
+        int size = [[attributes objectForKey:NSFileSize] intValue];
+        
+        NSFileHandle* fileHandle = [NSFileHandle fileHandleForReadingAtPath:path];
+        [self createFilesAndDirectoriesAtPath:path withTarObject:fileHandle size:size error:error];
+        [fileHandle closeFile];
+    }
+}
+
+-(void)createFilesAndDirectoriesAtPath:(NSString *)path withTarObject:(id)object size:(int)size error:(NSError **)error
+{
+    
     [self createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil]; //Create path on filesystem
     
-    long tarSize = [tarData length]; // size of file
     long location = 0; // Position in the file
-    while (location<tarSize) {       
+    while (location<size) {       
         long blockCount = 1; // 1 block for the header
         
-        switch ([NSFileManager typeForData:tarData withOffset:location]) {
+        switch ([NSFileManager typeForObject:object atOffset:location]) {
             case '0': // It's a File
             {                
-                NSString* name = [NSFileManager nameForData:tarData withOffset:location];
+                NSString* name = [NSFileManager nameForObject:object atOffset:location];
 #ifdef TAR_VERBOSE_LOG_MODE
                 NSLog(@"UNTAR - file - %@",name);  
 #endif
                 NSString *filePath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
                 
-                long size = [NSFileManager sizeForData:tarData withOffset:location];
+                long size = [NSFileManager sizeForObject:object atOffset:location];
                 blockCount += (size-1)/TAR_BLOCK_SIZE+1; // size/TAR_BLOCK_SIZE rounded up
                 
-                NSData *fileData = [NSFileManager fileDataForData:tarData withLength:size withOffset:location];
+                NSData *fileData = [NSFileManager fileDataForObject:object inRange:NSMakeRange(location, size)];
                 [self createFileAtPath:filePath contents:fileData attributes:nil]; //Write the file on filesystem
                 
                 break;
             }
             case '5': // It's a directory
             {
-                NSString* name = [NSFileManager nameForData:tarData withOffset:location];
+                NSString* name = [NSFileManager nameForObject:object atOffset:location];
 #ifdef TAR_VERBOSE_LOG_MODE
                 NSLog(@"UNTAR - directory - %@",name); 
 #endif
@@ -116,14 +137,14 @@
 #ifdef TAR_VERBOSE_LOG_MODE
                 NSLog(@"UNTAR - unsupported block"); 
 #endif
-                long size = [NSFileManager sizeForData:tarData withOffset:location];
+                long size = [NSFileManager sizeForObject:object atOffset:location];
                 blockCount += (size-1)/TAR_BLOCK_SIZE+1; // size/TAR_BLOCK_SIZE rounded up
             }          
             default: // It's not a tar type
             {
                 NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Invalid block type found" 
                                                                      forKey:NSLocalizedDescriptionKey];
-                *pError = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_BAD_BLOCK userInfo:userInfo];
+                *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_BAD_BLOCK userInfo:userInfo];
                 return;
             }
         }
@@ -134,32 +155,44 @@
 
 #pragma mark Private methods implementation
 
-+ (char)typeForData:(NSData*)data withOffset:(int)offset
++ (char)typeForObject:(id)object atOffset:(int)offset
 {
     char type;
-    [data getBytes:&type range:NSMakeRange(offset+TAR_TYPE_POSITION, 1)];
+    memcpy(&type,[self dataForObject:object inRange:NSMakeRange(offset+TAR_TYPE_POSITION, 1)].bytes, 1);
     return type;
 }
 
-+ (NSString*)nameForData:(NSData*)data withOffset:(int)offset
++ (NSString*)nameForObject:(id)object atOffset:(int)offset
 {
     char nameBytes[TAR_NAME_SIZE+1]; // TAR_NAME_SIZE+1 for nul char at end
-    memset(&nameBytes, '\0', TAR_NAME_SIZE+1); // Fill byte array with nul char 
-    [data getBytes:&nameBytes range:NSMakeRange(offset+TAR_NAME_POSITION, TAR_NAME_SIZE)];
+    memset(&nameBytes, '\0', TAR_NAME_SIZE+1); // Fill byte array with nul char
+    memcpy(&nameBytes,[self dataForObject:object inRange:NSMakeRange(offset+TAR_NAME_POSITION, TAR_NAME_SIZE)].bytes, TAR_NAME_SIZE);
     return [NSString stringWithCString:nameBytes encoding:NSASCIIStringEncoding];
 }
 
-+ (int)sizeForData:(NSData*)data withOffset:(int)offset
++ (int)sizeForObject:(id)object atOffset:(int)offset
 {
     char sizeBytes[TAR_SIZE_SIZE+1]; // TAR_SIZE_SIZE+1 for nul char at end
     memset(&sizeBytes, '\0', TAR_SIZE_SIZE+1); // Fill byte array with nul char
-    [data getBytes:&sizeBytes range:NSMakeRange(offset+TAR_SIZE_POSITION, TAR_SIZE_SIZE)];
+    memcpy(&sizeBytes,[self dataForObject:object inRange:NSMakeRange(offset+TAR_SIZE_POSITION, TAR_SIZE_SIZE)].bytes, TAR_SIZE_SIZE);
     return strtol(sizeBytes, NULL, 8); // Size is an octal number, convert to decimal
 }
 
-+ (NSData*)fileDataForData:(NSData*)data withLength:(int)length withOffset:(int)offset
++ (NSData*)fileDataForObject:(id)object inRange:(NSRange)range
 {
-    return [NSData dataWithBytes:data.bytes+offset+TAR_BLOCK_SIZE length:length];
+    return [self dataForObject:object inRange:NSMakeRange(range.location+TAR_BLOCK_SIZE, range.length)];
+}
+
++ (NSData*)dataForObject:(id)object inRange:(NSRange)range
+{
+    if([object isKindOfClass:[NSData class]]) {
+        return [object subdataWithRange:range];
+    }
+    else if([object isKindOfClass:[NSFileHandle class]]) {
+        [object seekToFileOffset:range.location];
+        return [object readDataOfLength:range.length];
+    }
+    return nil;
 }
 
 @end
