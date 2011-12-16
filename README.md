@@ -1,5 +1,8 @@
 # Light Untar for iOS
 ## Purpose
+### Why this code?
+http://blog.octo.com/en/untar-on-ios-the-pragmatic-way/
+
 ### What this code will do:
 * Extract files and directories created with the tar -cf command
 * Work with 512 block or multiple (tar -b512 or just tar)
