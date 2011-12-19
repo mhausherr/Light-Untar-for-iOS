@@ -43,11 +43,11 @@
 // Error const
 #define TAR_ERROR_DOMAIN @"com.lightuntar"
 #define TAR_ERROR_CODE_BAD_BLOCK 1
-
+#define TAR_ERROR_CODE_SOURCE_NOT_FOUND 2
 
 #pragma mark - Private Methods
 @interface NSFileManager(Tar_Private)
--(void)createFilesAndDirectoriesAtPath:(NSString *)path withTarObject:(id)object size:(int)size error:(NSError **)error;
+-(BOOL)createFilesAndDirectoriesAtPath:(NSString *)path withTarObject:(id)object size:(int)size error:(NSError **)error;
 
 + (char)typeForObject:(id)object atOffset:(int)offset;
 + (NSString*)nameForObject:(id)object atOffset:(int)offset;
@@ -59,32 +59,36 @@
 #pragma mark - Implementation
 @implementation NSFileManager (Tar)
 
-- (void)createFilesAndDirectoriesAtURL:(NSURL*)url withTarData:(NSData*)tarData error:(NSError**)error
+- (BOOL)createFilesAndDirectoriesAtURL:(NSURL*)url withTarData:(NSData*)tarData error:(NSError**)error
 {
-    [self createFilesAndDirectoriesAtPath:[url path] withTarData:tarData error:error];
+    return[self createFilesAndDirectoriesAtPath:[url path] withTarData:tarData error:error];
 }
 
-- (void)createFilesAndDirectoriesAtPath:(NSString*)path withTarData:(NSData*)tarData error:(NSError**)error
+- (BOOL)createFilesAndDirectoriesAtPath:(NSString*)path withTarData:(NSData*)tarData error:(NSError**)error
 {
-    [self createFilesAndDirectoriesAtPath:path withTarObject:tarData size:[tarData length] error:error];
+    return [self createFilesAndDirectoriesAtPath:path withTarObject:tarData size:[tarData length] error:error];
 }
 
--(void)createFilesAndDirectoriesAtPath:(NSString *)path withTarPath:(NSString *)tarPath error:(NSError **)error
+-(BOOL)createFilesAndDirectoriesAtPath:(NSString *)path withTarPath:(NSString *)tarPath error:(NSError **)error
 {
-    NSFileManager * filemanager = [[NSFileManager alloc]init];
-    if([filemanager fileExistsAtPath:path]){
-        NSDictionary * attributes = [filemanager attributesOfItemAtPath:path error:nil];        
+    NSFileManager * filemanager = [[[NSFileManager alloc] init] autorelease];
+    if([filemanager fileExistsAtPath:tarPath]){
+        NSDictionary * attributes = [filemanager attributesOfItemAtPath:tarPath error:nil];        
         int size = [[attributes objectForKey:NSFileSize] intValue];
         
-        NSFileHandle* fileHandle = [NSFileHandle fileHandleForReadingAtPath:path];
-        [self createFilesAndDirectoriesAtPath:path withTarObject:fileHandle size:size error:error];
+        NSFileHandle* fileHandle = [NSFileHandle fileHandleForReadingAtPath:tarPath];
+        BOOL result = [self createFilesAndDirectoriesAtPath:path withTarObject:fileHandle size:size error:error];
         [fileHandle closeFile];
+        return result;
     }
+    NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Source file not found" 
+                                                         forKey:NSLocalizedDescriptionKey];
+    if (error != NULL) *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_SOURCE_NOT_FOUND userInfo:userInfo];
+    return NO;
 }
 
--(void)createFilesAndDirectoriesAtPath:(NSString *)path withTarObject:(id)object size:(int)size error:(NSError **)error
+-(BOOL)createFilesAndDirectoriesAtPath:(NSString *)path withTarObject:(id)object size:(int)size error:(NSError **)error
 {
-    
     [self createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil]; //Create path on filesystem
     
     long location = 0; // Position in the file
@@ -139,18 +143,20 @@
 #endif
                 long size = [NSFileManager sizeForObject:object atOffset:location];
                 blockCount += (size-1)/TAR_BLOCK_SIZE+1; // size/TAR_BLOCK_SIZE rounded up
+                break;
             }          
             default: // It's not a tar type
             {
                 NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Invalid block type found" 
                                                                      forKey:NSLocalizedDescriptionKey];
-                *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_BAD_BLOCK userInfo:userInfo];
-                return;
+                if (error != NULL) *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_BAD_BLOCK userInfo:userInfo];
+                return NO;
             }
         }
         
         location+=blockCount*TAR_BLOCK_SIZE;
     }
+    return YES;
 }
 
 #pragma mark Private methods implementation
