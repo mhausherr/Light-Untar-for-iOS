@@ -40,6 +40,8 @@
 #define TAR_SIZE_POSITION 124
 #define TAR_SIZE_SIZE 12
 
+#define TAR_MAX_BLOCK_LOAD_IN_MEMORY 100
+
 // Error const
 #define TAR_ERROR_DOMAIN @"com.lightuntar"
 #define TAR_ERROR_CODE_BAD_BLOCK 1
@@ -52,7 +54,7 @@
 + (char)typeForObject:(id)object atOffset:(int)offset;
 + (NSString*)nameForObject:(id)object atOffset:(int)offset;
 + (int)sizeForObject:(id)object atOffset:(int)offset;
-+ (NSData*)fileDataForObject:(id)object inRange:(NSRange)range;
+- (void)writeFileDataForObject:(id)object inRange:(NSRange)range atPath:(NSString*)path;
 + (NSData*)dataForObject:(id)object inRange:(NSRange)range;
 @end
 
@@ -107,9 +109,7 @@
                 long size = [NSFileManager sizeForObject:object atOffset:location];
                 blockCount += (size-1)/TAR_BLOCK_SIZE+1; // size/TAR_BLOCK_SIZE rounded up
                 
-                NSData *fileData = [NSFileManager fileDataForObject:object inRange:NSMakeRange(location, size)];
-                [self createFileAtPath:filePath contents:fileData attributes:nil]; //Write the file on filesystem
-                
+                [self writeFileDataForObject:object inRange:NSMakeRange(location+TAR_BLOCK_SIZE, size) atPath:filePath];                
                 break;
             }
             case '5': // It's a directory
@@ -184,9 +184,26 @@
     return strtol(sizeBytes, NULL, 8); // Size is an octal number, convert to decimal
 }
 
-+ (NSData*)fileDataForObject:(id)object inRange:(NSRange)range
+- (void)writeFileDataForObject:(id)object inRange:(NSRange)range atPath:(NSString*)path
 {
-    return [self dataForObject:object inRange:NSMakeRange(range.location+TAR_BLOCK_SIZE, range.length)];
+    if([object isKindOfClass:[NSData class]]) {
+        [self createFileAtPath:path contents:[object subdataWithRange:range] attributes:nil]; //Write the file on filesystem
+    }
+    else if([object isKindOfClass:[NSFileHandle class]]) {
+        if([self createFileAtPath:path contents:nil attributes:nil]) {
+            
+            NSFileHandle *destinationFile = [NSFileHandle fileHandleForWritingAtPath:path];
+            [object seekToFileOffset:range.location];
+            
+            int maxSize = TAR_MAX_BLOCK_LOAD_IN_MEMORY*TAR_BLOCK_SIZE;
+            while(range.length > maxSize) {
+                [destinationFile writeData:[object readDataOfLength:maxSize]];
+                range = NSMakeRange(range.location+maxSize,range.length-maxSize);
+            }
+            [destinationFile writeData:[object readDataOfLength:range.length]];
+            [destinationFile closeFile];
+        }
+    }
 }
 
 + (NSData*)dataForObject:(id)object inRange:(NSRange)range
