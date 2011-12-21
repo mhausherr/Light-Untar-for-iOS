@@ -73,7 +73,7 @@
 
 -(BOOL)createFilesAndDirectoriesAtPath:(NSString *)path withTarPath:(NSString *)tarPath error:(NSError **)error
 {
-    NSFileManager * filemanager = [[[NSFileManager alloc] init] autorelease];
+    NSFileManager * filemanager = [NSFileManager defaultManager];
     if([filemanager fileExistsAtPath:tarPath]){
         NSDictionary * attributes = [filemanager attributesOfItemAtPath:tarPath error:nil];        
         int size = [[attributes objectForKey:NSFileSize] intValue];
