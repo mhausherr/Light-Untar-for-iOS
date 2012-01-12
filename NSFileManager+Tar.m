@@ -107,6 +107,15 @@
                 NSString *filePath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
                 
                 long size = [NSFileManager sizeForObject:object atOffset:location];
+                
+                if (size == 0){
+#ifdef TAR_VERBOSE_LOG_MODE
+                    NSLog(@"UNTAR - empty_file - %@", filePath);
+#endif
+                    [@"" writeToFile:filePath atomically:YES encoding:NSUTF8StringEncoding error:error];
+                    break;
+                }
+
                 blockCount += (size-1)/TAR_BLOCK_SIZE+1; // size/TAR_BLOCK_SIZE rounded up
                 
                 [self writeFileDataForObject:object inRange:NSMakeRange(location+TAR_BLOCK_SIZE, size) atPath:filePath];                
