@@ -30,7 +30,7 @@
 
 // Login mode
 // Comment this line for production
-#define TAR_VERBOSE_LOG_MODE
+//#define TAR_VERBOSE_LOG_MODE
 
 // const definition
 #define TAR_BLOCK_SIZE 512
