@@ -30,7 +30,7 @@
 
 // Login mode
 // Comment this line for production
-#define TAR_VERBOSE_LOG_MODE
+//#define TAR_VERBOSE_LOG_MODE
 
 // const definition
 #define TAR_BLOCK_SIZE 512
@@ -199,7 +199,7 @@
         [self createFileAtPath:path contents:[object subdataWithRange:range] attributes:nil]; //Write the file on filesystem
     }
     else if([object isKindOfClass:[NSFileHandle class]]) {
-        if([self createFileAtPath:path contents:nil attributes:nil]) {
+        if([[NSData data] writeToFile:path atomically:NO]) {
             
             NSFileHandle *destinationFile = [NSFileHandle fileHandleForWritingAtPath:path];
             [object seekToFileOffset:range.location];
