@@ -151,7 +151,7 @@
                 NSLog(@"UNTAR - unsupported block"); 
 #endif
                 long size = [NSFileManager sizeForObject:object atOffset:location];
-                blockCount += (size-1)/TAR_BLOCK_SIZE+1; // size/TAR_BLOCK_SIZE rounded up
+                blockCount += ceil(size/TAR_BLOCK_SIZE);
                 break;
             }          
             default: // It's not a tar type
@@ -206,8 +206,10 @@
             
             int maxSize = TAR_MAX_BLOCK_LOAD_IN_MEMORY*TAR_BLOCK_SIZE;
             while(range.length > maxSize) {
+                NSAutoreleasePool *poll = [[NSAutoreleasePool alloc] init];
                 [destinationFile writeData:[object readDataOfLength:maxSize]];
                 range = NSMakeRange(range.location+maxSize,range.length-maxSize);
+                [poll release];
             }
             [destinationFile writeData:[object readDataOfLength:range.length]];
             [destinationFile closeFile];
