@@ -94,8 +94,11 @@
     [self createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil]; //Create path on filesystem
     
     long location = 0; // Position in the file
+    NSAutoreleasePool *pool;
+    
     while (location<size) {       
         long blockCount = 1; // 1 block for the header
+        pool = [[NSAutoreleasePool alloc] init];
         
         switch ([NSFileManager typeForObject:object atOffset:location]) {
             case '0': // It's a File
@@ -159,11 +162,13 @@
                 NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Invalid block type found" 
                                                                      forKey:NSLocalizedDescriptionKey];
                 if (error != NULL) *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_BAD_BLOCK userInfo:userInfo];
+                [pool drain];
                 return NO;
             }
         }
         
         location+=blockCount*TAR_BLOCK_SIZE;
+        [pool drain];
     }
     return YES;
 }
