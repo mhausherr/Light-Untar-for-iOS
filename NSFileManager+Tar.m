@@ -47,7 +47,9 @@
 #define TAR_ERROR_CODE_SOURCE_NOT_FOUND 2
 
 #pragma mark - Private Methods
+
 @interface NSFileManager(Tar_Private)
+
 -(BOOL)createFilesAndDirectoriesAtPath:(NSString *)path withTarObject:(id)object size:(unsigned long long)size error:(NSError **)error;
 
 + (char)typeForObject:(id)object atOffset:(unsigned long long)offset;
@@ -75,14 +77,14 @@
 {
     NSFileManager * filemanager = [NSFileManager defaultManager];
     if([filemanager fileExistsAtPath:tarPath]){
-        NSDictionary * attributes = [filemanager attributesOfItemAtPath:tarPath error:nil];        
+        NSDictionary * attributes = [filemanager attributesOfItemAtPath:tarPath error:nil];
         unsigned long long  size = [[attributes objectForKey:NSFileSize] longLongValue]; //NSFileSize retourne un NSNumber long long
         NSFileHandle* fileHandle = [NSFileHandle fileHandleForReadingAtPath:tarPath];
         BOOL result = [self createFilesAndDirectoriesAtPath:path withTarObject:fileHandle size:size error:error];
         [fileHandle closeFile];
         return result;
     }
-    NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Source file not found" 
+    NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Source file not found"
                                                          forKey:NSLocalizedDescriptionKey];
     if (error != NULL) *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_SOURCE_NOT_FOUND userInfo:userInfo];
     return NO;
@@ -93,18 +95,16 @@
     [self createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil]; //Create path on filesystem
     
     unsigned long long location = 0; // Position in the file
-    NSAutoreleasePool *pool;
     
-    while (location<size) {       
+    while (location<size) {
         unsigned long long blockCount = 1; // 1 block for the header
-        pool = [[NSAutoreleasePool alloc] init];
         
         switch ([NSFileManager typeForObject:object atOffset:location]) {
             case '0': // It's a File
-            {                
+            {
                 NSString* name = [NSFileManager nameForObject:object atOffset:location];
 #ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - file - %@",name);  
+                NSLog(@"UNTAR - file - %@",name);
 #endif
                 NSString *filePath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
                 
@@ -120,7 +120,7 @@
                 
                 blockCount += (size-1)/TAR_BLOCK_SIZE+1; // size/TAR_BLOCK_SIZE rounded up
                 
-                // [self writeFileDataForObject:object inRange:NSMakeRange(location+TAR_BLOCK_SIZE, size) atPath:filePath]; 
+                // [self writeFileDataForObject:object inRange:NSMakeRange(location+TAR_BLOCK_SIZE, size) atPath:filePath];
                 [self writeFileDataForObject:object atLocation:(location+TAR_BLOCK_SIZE) withLength:size atPath:filePath];
                 break;
             }
@@ -128,7 +128,7 @@
             {
                 NSString* name = [NSFileManager nameForObject:object atOffset:location];
 #ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - directory - %@",name); 
+                NSLog(@"UNTAR - directory - %@",name);
 #endif
                 NSString *directoryPath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
                 [self createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:nil]; //Write the directory on filesystem
@@ -137,7 +137,7 @@
             case '\0': // It's a nul block
             {
 #ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - empty block"); 
+                NSLog(@"UNTAR - empty block");
 #endif
                 break;
             }
@@ -151,24 +151,22 @@
             case 'g': // It's not a file neither a directory
             {
 #ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - unsupported block"); 
+                NSLog(@"UNTAR - unsupported block");
 #endif
                 unsigned long long size = [NSFileManager sizeForObject:object atOffset:location];
                 blockCount += ceil(size/TAR_BLOCK_SIZE);
                 break;
-            }          
+            }
             default: // It's not a tar type
             {
-                NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Invalid block type found" 
+                NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Invalid block type found"
                                                                      forKey:NSLocalizedDescriptionKey];
                 if (error != NULL) *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_BAD_BLOCK userInfo:userInfo];
-                [pool drain];
                 return NO;
             }
         }
         
         location+=blockCount*TAR_BLOCK_SIZE;
-        [pool drain];
     }
     return YES;
 }
@@ -213,11 +211,9 @@
             unsigned long long maxSize = TAR_MAX_BLOCK_LOAD_IN_MEMORY*TAR_BLOCK_SIZE;
             
             while(length > maxSize) {
-                NSAutoreleasePool *poll = [[NSAutoreleasePool alloc] init];
                 [destinationFile writeData:[object readDataOfLength:maxSize]];
                 location += maxSize;
                 length -= maxSize;
-                [poll release];
             }
             [destinationFile writeData:[object readDataOfLength:length]];
             [destinationFile closeFile];
