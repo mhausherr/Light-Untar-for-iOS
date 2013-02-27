@@ -93,82 +93,81 @@
     [self createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil]; //Create path on filesystem
     
     unsigned long long location = 0; // Position in the file
-    NSAutoreleasePool *pool;
     
     while (location<size) {       
         unsigned long long blockCount = 1; // 1 block for the header
-        pool = [[NSAutoreleasePool alloc] init];
-        
-        switch ([NSFileManager typeForObject:object atOffset:location]) {
-            case '0': // It's a File
-            {                
-                NSString* name = [NSFileManager nameForObject:object atOffset:location];
+        @autoreleasepool {
+            
+            switch ([NSFileManager typeForObject:object atOffset:location]) {
+                case '0': // It's a File
+                {
+                    NSString* name = [NSFileManager nameForObject:object atOffset:location];
 #ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - file - %@",name);  
+                    NSLog(@"UNTAR - file - %@",name);
 #endif
-                NSString *filePath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
-                
-                unsigned long long size = [NSFileManager sizeForObject:object atOffset:location];
-                
-                if (size == 0){
+                    NSString *filePath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
+                    
+                    unsigned long long size = [NSFileManager sizeForObject:object atOffset:location];
+                    
+                    if (size == 0){
 #ifdef TAR_VERBOSE_LOG_MODE
-                    NSLog(@"UNTAR - empty_file - %@", filePath);
+                        NSLog(@"UNTAR - empty_file - %@", filePath);
 #endif
-                    [@"" writeToFile:filePath atomically:YES encoding:NSUTF8StringEncoding error:error];
+                        [@"" writeToFile:filePath atomically:YES encoding:NSUTF8StringEncoding error:error];
+                        break;
+                    }
+                    
+                    blockCount += (size-1)/TAR_BLOCK_SIZE+1; // size/TAR_BLOCK_SIZE rounded up
+                    
+                    // [self writeFileDataForObject:object inRange:NSMakeRange(location+TAR_BLOCK_SIZE, size) atPath:filePath];
+                    [self writeFileDataForObject:object atLocation:(location+TAR_BLOCK_SIZE) withLength:size atPath:filePath];
                     break;
                 }
-                
-                blockCount += (size-1)/TAR_BLOCK_SIZE+1; // size/TAR_BLOCK_SIZE rounded up
-                
-                // [self writeFileDataForObject:object inRange:NSMakeRange(location+TAR_BLOCK_SIZE, size) atPath:filePath]; 
-                [self writeFileDataForObject:object atLocation:(location+TAR_BLOCK_SIZE) withLength:size atPath:filePath];
-                break;
-            }
-            case '5': // It's a directory
-            {
-                NSString* name = [NSFileManager nameForObject:object atOffset:location];
+                case '5': // It's a directory
+                {
+                    NSString* name = [NSFileManager nameForObject:object atOffset:location];
 #ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - directory - %@",name); 
+                    NSLog(@"UNTAR - directory - %@",name);
 #endif
-                NSString *directoryPath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
-                [self createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:nil]; //Write the directory on filesystem
-                break;
-            }
-            case '\0': // It's a nul block
-            {
+                    NSString *directoryPath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
+                    [self createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:nil]; //Write the directory on filesystem
+                    break;
+                }
+                case '\0': // It's a nul block
+                {
 #ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - empty block"); 
+                    NSLog(@"UNTAR - empty block");
 #endif
-                break;
-            }
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '6':
-            case '7':
-            case 'x':
-            case 'g': // It's not a file neither a directory
-            {
+                    break;
+                }
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '6':
+                case '7':
+                case 'x':
+                case 'g': // It's not a file neither a directory
+                {
 #ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - unsupported block"); 
+                    NSLog(@"UNTAR - unsupported block");
 #endif
-                unsigned long long size = [NSFileManager sizeForObject:object atOffset:location];
-                blockCount += ceil(size/TAR_BLOCK_SIZE);
-                break;
-            }          
-            default: // It's not a tar type
-            {
-                NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Invalid block type found" 
-                                                                     forKey:NSLocalizedDescriptionKey];
-                if (error != NULL) *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_BAD_BLOCK userInfo:userInfo];
-                [pool drain];
-                return NO;
+                    unsigned long long size = [NSFileManager sizeForObject:object atOffset:location];
+                    blockCount += ceil(size/TAR_BLOCK_SIZE);
+                    break;
+                }
+                default: // It's not a tar type
+                {
+                    NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Invalid block type found"
+                                                                         forKey:NSLocalizedDescriptionKey];
+                    if (error != NULL) *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_BAD_BLOCK userInfo:userInfo];
+                    [pool drain];
+                    return NO;
+                }
             }
+            
+            location+=blockCount*TAR_BLOCK_SIZE;
         }
-        
-        location+=blockCount*TAR_BLOCK_SIZE;
-        [pool drain];
     }
     return YES;
 }
@@ -213,11 +212,11 @@
             unsigned long long maxSize = TAR_MAX_BLOCK_LOAD_IN_MEMORY*TAR_BLOCK_SIZE;
             
             while(length > maxSize) {
-                NSAutoreleasePool *poll = [[NSAutoreleasePool alloc] init];
-                [destinationFile writeData:[object readDataOfLength:maxSize]];
-                location += maxSize;
-                length -= maxSize;
-                [poll drain];
+                @autoreleasepool {
+                    [destinationFile writeData:[object readDataOfLength:maxSize]];
+                    location += maxSize;
+                    length -= maxSize;
+                }
             }
             [destinationFile writeData:[object readDataOfLength:length]];
             [destinationFile closeFile];
