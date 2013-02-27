@@ -217,7 +217,7 @@
                 [destinationFile writeData:[object readDataOfLength:maxSize]];
                 location += maxSize;
                 length -= maxSize;
-                [poll release];
+                [poll drain];
             }
             [destinationFile writeData:[object readDataOfLength:length]];
             [destinationFile closeFile];
