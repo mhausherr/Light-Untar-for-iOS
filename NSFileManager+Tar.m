@@ -75,14 +75,14 @@
 {
     NSFileManager * filemanager = [NSFileManager defaultManager];
     if([filemanager fileExistsAtPath:tarPath]){
-        NSDictionary * attributes = [filemanager attributesOfItemAtPath:tarPath error:nil];        
+        NSDictionary * attributes = [filemanager attributesOfItemAtPath:tarPath error:nil];
         unsigned long long  size = [[attributes objectForKey:NSFileSize] longLongValue]; //NSFileSize retourne un NSNumber long long
         NSFileHandle* fileHandle = [NSFileHandle fileHandleForReadingAtPath:tarPath];
         BOOL result = [self createFilesAndDirectoriesAtPath:path withTarObject:fileHandle size:size error:error];
         [fileHandle closeFile];
         return result;
     }
-    NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Source file not found" 
+    NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Source file not found"
                                                          forKey:NSLocalizedDescriptionKey];
     if (error != NULL) *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_SOURCE_NOT_FOUND userInfo:userInfo];
     return NO;
@@ -94,7 +94,7 @@
     
     unsigned long long location = 0; // Position in the file
     
-    while (location<size) {       
+    while (location<size) {
         unsigned long long blockCount = 1; // 1 block for the header
         @autoreleasepool {
             
@@ -161,7 +161,6 @@
                     NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Invalid block type found"
                                                                          forKey:NSLocalizedDescriptionKey];
                     if (error != NULL) *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_BAD_BLOCK userInfo:userInfo];
-                    [pool drain];
                     return NO;
                 }
             }
