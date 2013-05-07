@@ -28,8 +28,8 @@
 
 @interface NSFileManager (Tar)
 
-- (BOOL)createFilesAndDirectoriesAtURL:(NSURL*)url withTarData:(NSData*)tarData error:(NSError**)error;
-- (BOOL)createFilesAndDirectoriesAtPath:(NSString*)path withTarData:(NSData*)tarData error:(NSError**)error;
-- (BOOL)createFilesAndDirectoriesAtPath:(NSString*)path withTarPath:(NSString*)tarPath error:(NSError**)error;
+- (BOOL)createFilesAndDirectoriesAtURL:(NSURL *)url withTarData:(NSData *)tarData error:(NSError **)error;
+- (BOOL)createFilesAndDirectoriesAtPath:(NSString *)path withTarData:(NSData *)tarData error:(NSError **)error;
+- (BOOL)createFilesAndDirectoriesAtPath:(NSString *)path withTarPath:(NSString *)tarPath error:(NSError **)error;
 
 @end
