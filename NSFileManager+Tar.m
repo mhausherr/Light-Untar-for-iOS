@@ -92,91 +92,135 @@
     return NO;
 }
 
-- (BOOL)createFilesAndDirectoriesAtPath:(NSString *)path withTarObject:(id)object size:(unsigned long long)size error:(NSError **)error
+- (BOOL)createFilesAndDirectoriesAtPath:(NSString *)path
+                          withTarObject:(id)object
+                                   size:(unsigned long long)size
+                               progress:(NSProgress*)progress
+                                  error:(NSError **)error
 {
-    [self createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil]; //Create path on filesystem
+    NSFileManager *filemanager = [NSFileManager defaultManager];
+    
+     //Create path on filesystem
+    [filemanager createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
     
     unsigned long long location = 0; // Position in the file
-    
     while (location < size) {
+        progress.completedUnitCount = [self completionUnitCountForBytes:location];
         unsigned long long blockCount = 1; // 1 block for the header
-        @autoreleasepool {
-            switch ([NSFileManager typeForObject:object atOffset:location]) {
-                case '0': // It's a File
-                {
-                    NSString *name = [NSFileManager nameForObject:object atOffset:location];
+        switch ([NVHTarFile typeForObject:object atOffset:location]) {
+            case '0':   // It's a File,
+            case '\0':  // It's also a File, needed for backward compatibility
+            {
+                @autoreleasepool {
+                    NSString *name = [NVHTarFile nameForObject:object atOffset:location];
 #ifdef TAR_VERBOSE_LOG_MODE
                     NSLog(@"UNTAR - file - %@", name);
 #endif
                     NSString *filePath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
                     
-                    unsigned long long size = [NSFileManager sizeForObject:object atOffset:location];
+                    unsigned long long objectSize = [NVHTarFile sizeForObject:object atOffset:location];
                     
-                    if (size == 0) {
+                    if (objectSize == 0 && name.length) {
 #ifdef TAR_VERBOSE_LOG_MODE
                         NSLog(@"UNTAR - empty_file - %@", filePath);
 #endif
-                        [@"" writeToFile:filePath atomically:YES encoding:NSUTF8StringEncoding error:error];
+                        NSError *writeError;
+                        BOOL copied = [@"" writeToFile:filePath
+                                            atomically:YES
+                                              encoding:NSUTF8StringEncoding
+                                                 error:&writeError];
+                        if (!copied) {
+#ifdef TAR_VERBOSE_LOG_MODE
+                            NSLog(@"UNTAR - error during creating a directrory for a file - %@", writeError);
+#endif
+                        }
                         break;
                     }
                     
-                    blockCount += (size - 1) / TAR_BLOCK_SIZE + 1; // size/TAR_BLOCK_SIZE rounded up
+                    blockCount += (objectSize - 1) / TAR_BLOCK_SIZE + 1; // size/TAR_BLOCK_SIZE rounded up
                     
-                    // [self writeFileDataForObject:object inRange:NSMakeRange(location+TAR_BLOCK_SIZE, size) atPath:filePath];
-                    [self writeFileDataForObject:object atLocation:(location + TAR_BLOCK_SIZE) withLength:size atPath:filePath];
-                    break;
+                    // The name field is the file name of the file,
+                    // with directory names (if any) preceding the file name, separated by slashes.
+                    if ([name lastPathComponent].length != name.length) {
+                        NSString *directoryPath = [[path stringByAppendingPathComponent:name]
+                                                   stringByDeletingLastPathComponent];
+                        NSError *createError;
+                        BOOL created = [filemanager createDirectoryAtPath:directoryPath
+                                              withIntermediateDirectories:YES
+                                                               attributes:nil
+                                                                    error:&createError];
+                        if (!created) {
+#ifdef TAR_VERBOSE_LOG_MODE
+                            NSLog(@"UNTAR - error during writing empty_file - %@", createError);
+#endif
+                        }
+                    }
+                    
+                    [self writeFileDataForObject:object
+                                      atLocation:(location + TAR_BLOCK_SIZE)
+                                      withLength:objectSize
+                                          atPath:filePath];
                 }
-                    
-                case '5': // It's a directory
-                {
-                    NSString *name = [NSFileManager nameForObject:object atOffset:location];
+                break;
+            }
+                
+            case '5': // It's a directory
+            {
+                @autoreleasepool {
+                    NSString *name = [NVHTarFile nameForObject:object atOffset:location];
 #ifdef TAR_VERBOSE_LOG_MODE
                     NSLog(@"UNTAR - directory - %@", name);
 #endif
-                    NSString *directoryPath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
-                    [self createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:nil]; //Write the directory on filesystem
-                    break;
-                }
-                    
-                case '\0': // It's a nul block
-                {
+                    // Create a full path from the name
+                    NSString *directoryPath = [path stringByAppendingPathComponent:name];
+                    NSError *createError;
+                    BOOL created = [filemanager createDirectoryAtPath:directoryPath
+                                          withIntermediateDirectories:YES
+                                                           attributes:nil
+                                                                error:&createError]; //Write the directory on filesystem
+                    if (!created) {
 #ifdef TAR_VERBOSE_LOG_MODE
-                    NSLog(@"UNTAR - empty block");
+                        NSLog(@"UNTAR - error during creating a directrory - %@", createError);
 #endif
-                    break;
+                    }
                 }
-                    
-                case '1':
-                case '2':
-                case '3':
-                case '4':
-                case '6':
-                case '7':
-                case 'x':
-                case 'g': // It's not a file neither a directory
-                {
-#ifdef TAR_VERBOSE_LOG_MODE
-                    NSLog(@"UNTAR - unsupported block");
-#endif
-                    unsigned long long size = [NSFileManager sizeForObject:object atOffset:location];
-                    blockCount += ceil(size / TAR_BLOCK_SIZE);
-                    break;
-                }
-                    
-                default: // It's not a tar type
-                {
-                    NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Invalid block type found"
-                                                                         forKey:NSLocalizedDescriptionKey];
-                    
-                    if (error != NULL) *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN code:TAR_ERROR_CODE_BAD_BLOCK userInfo:userInfo];
-                    
-                    return NO;
-                }
+                break;
             }
-            
-            location += blockCount * TAR_BLOCK_SIZE;
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '6':
+            case '7':
+            case 'x':
+            case 'g': // It's not a file neither a directory
+            {
+#ifdef TAR_VERBOSE_LOG_MODE
+                NSLog(@"UNTAR - unsupported block");
+#endif
+                @autoreleasepool {
+                    unsigned long long objectSize = [NVHTarFile sizeForObject:object atOffset:location];
+                    blockCount += ceil(objectSize / TAR_BLOCK_SIZE);
+                }
+                break;
+            }
+                
+            default: // It's not a tar type
+            {
+                NSDictionary *userInfo = [NSDictionary dictionaryWithObject:@"Invalid block type found"
+                                                                     forKey:NSLocalizedDescriptionKey];
+                
+                if (error != NULL) *error = [NSError errorWithDomain:TAR_ERROR_DOMAIN
+                                                                code:TAR_ERROR_CODE_BAD_BLOCK
+                                                            userInfo:userInfo];
+                
+                return NO;
+            }
         }
+        
+        location += blockCount * TAR_BLOCK_SIZE;
     }
+    progress.completedUnitCount = progress.totalUnitCount;
     return YES;
 }
 
