@@ -254,10 +254,15 @@
 
 - (void)writeFileDataForObject:(id)object atLocation:(unsigned long long)location withLength:(unsigned long long)length atPath:(NSString *)path
 {
+    BOOL created = NO;
     if ([object isKindOfClass:[NSData class]]) {
-        [self createFileAtPath:path contents:[object subdataWithRange:NSMakeRange(location, length)] attributes:nil]; //Write the file on filesystem
+        NSData *contents = [object subdataWithRange:NSMakeRange((NSUInteger)location, (NSUInteger)length)];
+        created = [[NSFileManager defaultManager] createFileAtPath:path
+                                                          contents:contents
+                                                        attributes:nil]; //Write the file on filesystem
     } else if ([object isKindOfClass:[NSFileHandle class]]) {
-        if ([[NSData data] writeToFile:path atomically:NO]) {
+        created = [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
+        if (created) {
             NSFileHandle *destinationFile = [NSFileHandle fileHandleForWritingAtPath:path];
             [object seekToFileOffset:location];
             
@@ -265,14 +270,20 @@
             
             while (length > maxSize) {
                 @autoreleasepool {
-                    [destinationFile writeData:[object readDataOfLength:maxSize]];
+                    [destinationFile writeData:[object readDataOfLength:(NSUInteger)maxSize]];
                     location += maxSize;
                     length -= maxSize;
                 }
             }
-            [destinationFile writeData:[object readDataOfLength:length]];
+            [destinationFile writeData:[object readDataOfLength:(NSUInteger)length]];
             [destinationFile closeFile];
         }
+    }
+    
+    if (!created) {
+#ifdef TAR_VERBOSE_LOG_MODE
+        NSLog(@"UNTAR - can't create file");
+#endif
     }
 }
 
