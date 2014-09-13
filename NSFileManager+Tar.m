@@ -182,7 +182,7 @@
 
 #pragma mark Private methods implementation
 
-+ (char)typeForObject:(id)object atOffset:(unsigned long long)offset
++ (char)typeForObject:(id)object atOffset:(NSUInteger)offset
 {
     char type;
     
@@ -190,7 +190,7 @@
     return type;
 }
 
-+ (NSString *)nameForObject:(id)object atOffset:(unsigned long long)offset
++ (NSString *)nameForObject:(id)object atOffset:(NSUInteger)offset
 {
     char nameBytes[TAR_NAME_SIZE + 1]; // TAR_NAME_SIZE+1 for nul char at end
     
@@ -199,7 +199,7 @@
     return [NSString stringWithCString:nameBytes encoding:NSASCIIStringEncoding];
 }
 
-+ (unsigned long long)sizeForObject:(id)object atOffset:(unsigned long long)offset
++ (unsigned long long)sizeForObject:(id)object atOffset:(NSUInteger)offset
 {
     char sizeBytes[TAR_SIZE_SIZE + 1]; // TAR_SIZE_SIZE+1 for nul char at end
     
@@ -208,7 +208,7 @@
     return strtol(sizeBytes, NULL, 8); // Size is an octal number, convert to decimal
 }
 
-- (void)writeFileDataForObject:(id)object atLocation:(unsigned long long)location withLength:(unsigned long long)length atPath:(NSString *)path
+- (void)writeFileDataForObject:(id)object atLocation:(NSUInteger)location withLength:(NSUInteger)length atPath:(NSString *)path
 {
     if ([object isKindOfClass:[NSData class]]) {
         [self createFileAtPath:path contents:[object subdataWithRange:NSMakeRange(location, length)] attributes:nil]; //Write the file on filesystem
@@ -217,7 +217,7 @@
             NSFileHandle *destinationFile = [NSFileHandle fileHandleForWritingAtPath:path];
             [object seekToFileOffset:location];
             
-            unsigned long long maxSize = TAR_MAX_BLOCK_LOAD_IN_MEMORY * TAR_BLOCK_SIZE;
+            NSUInteger maxSize = TAR_MAX_BLOCK_LOAD_IN_MEMORY * TAR_BLOCK_SIZE;
             
             while (length > maxSize) {
                 @autoreleasepool {
@@ -232,7 +232,7 @@
     }
 }
 
-+ (NSData *)dataForObject:(id)object inRange:(NSRange)range orLocation:(unsigned long long)location andLength:(unsigned long long)length
++ (NSData *)dataForObject:(id)object inRange:(NSRange)range orLocation:(NSUInteger)location andLength:(NSUInteger)length
 {
     if ([object isKindOfClass:[NSData class]]) {
         return [object subdataWithRange:range];
