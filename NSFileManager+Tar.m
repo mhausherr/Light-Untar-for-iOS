@@ -90,11 +90,11 @@
 
     if ([filemanager fileExistsAtPath:tarPath]) {
         NSDictionary *attributes = [filemanager attributesOfItemAtPath:tarPath error:error];
-        
-        if (error) {
+
+        if (*error) {
             return NO;
         }
-        
+
         unsigned long long size = [[attributes objectForKey:NSFileSize] longLongValue];  //NSFileSize returns an NSNumber long long
         NSFileHandle *fileHandle = [NSFileHandle fileHandleForReadingAtPath:tarPath];
         BOOL result = [self createFilesAndDirectoriesAtPath:path withTarObject:fileHandle size:size error:error progress:progressBlock];
@@ -124,12 +124,12 @@
 
     while (location < size) {
         unsigned long long blockCount = 1; // 1 block for the header
-        
+
         // Call block progression to update info
         if (progressBlock != nil) {
             progressBlock((float)(location)/(float)(size));
         }
-        
+
         @autoreleasepool {
             int type = [NSFileManager typeForObject:object atOffset:location];
             switch (type) {

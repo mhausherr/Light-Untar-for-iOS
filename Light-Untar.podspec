@@ -6,7 +6,7 @@
 #
 Pod::Spec.new do |s|
   s.name         = "Light-Untar"
-  s.version      = "0.2.0"
+  s.version      = "0.2.1"
   s.summary      = "Extract files and directories created with the tar -cf command."
   s.homepage     = "https://github.com/mhausherr/Light-Untar-for-iOS"
   s.license      = 'BSD'
