@@ -91,7 +91,7 @@
     if ([filemanager fileExistsAtPath:tarPath]) {
         NSDictionary *attributes = [filemanager attributesOfItemAtPath:tarPath error:error];
 
-        if (*error) {
+        if (!attributes) {
             return NO;
         }
 
