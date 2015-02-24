@@ -14,5 +14,5 @@ Pod::Spec.new do |s|
   s.source       = { :git => "https://github.com/mhausherr/Light-Untar-for-iOS.git", :tag => "0.2.2" }
   s.platform     = :ios, '5.0'
   s.source_files = '*.{h,m}'
-  s.requires_arc = true
+  s.requires_arc = false
 end
