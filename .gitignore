@@ -1,0 +1,7 @@
+Pods
+
+## Do not commit the following resources.
+## They are generated when you launch the tests.
+Tests/Resources/average.tar
+Tests/Resources/big.tar
+Tests/Resources/simple.tar
