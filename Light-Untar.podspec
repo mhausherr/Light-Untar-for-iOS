@@ -13,6 +13,6 @@ Pod::Spec.new do |s|
   s.author       = { "Mathieu Hausherr" => "mhausherr@gmail.com" }
   s.source       = { :git => "https://github.com/mhausherr/Light-Untar-for-iOS.git", :tag => "0.2.3" }
   s.platform     = :ios, '5.0'
-  s.source_files = '*.{h,m}'
-  s.requires_arc = false
+  s.source_files = 'Light-Untar/*.{h,m}'
+  s.requires_arc = true
 end
