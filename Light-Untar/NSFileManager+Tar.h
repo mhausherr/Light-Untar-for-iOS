@@ -29,10 +29,13 @@
 /**
  *  Block to follow the extracting of the archive
  *
- *  @param float Percentage of the archive extracted
+ *  @param progress Percentage of the archive extracted
  */
-typedef void(^NSFileManagerTarProgressBlock)(float);
+typedef void(^NSFileManagerTarProgressBlock)(float progress);
 
+/**
+ * Category to add TAR extraction capability.
+ */
 @interface NSFileManager (Tar)
 
 /**
