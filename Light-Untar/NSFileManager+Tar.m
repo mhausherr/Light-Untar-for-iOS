@@ -126,11 +126,6 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
     while (location < size) {
         unsigned long long blockCount = 1; // 1 block for the header
 
-        // Call block progression to update info
-        if (progressBlock != nil) {
-            progressBlock((float)(location)/(float)(size));
-        }
-
         int type = [NSFileManager typeForObject:object atOffset:location];
         switch (type) {
             case '0': // It's a File
@@ -221,6 +216,11 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
 #endif
 
         location += blockCount * TAR_BLOCK_SIZE;
+        
+        // Call block progression to update info
+        if (progressBlock != nil) {
+            progressBlock((float)(location)/(float)(size));
+        }
     }
     return YES;
 }
