@@ -36,7 +36,9 @@
 static int TAR_BLOCK_SIZE               = 512;
 static int TAR_TYPE_POSITION            = 156;
 static int TAR_NAME_POSITION            = 0;
+static int TAR_LONG_NAME_POSITION       = 0;
 static int TAR_NAME_SIZE                = 100;
+static int TAR_LONG_NAME_SIZE           = 512;
 static int TAR_SIZE_POSITION            = 124;
 static int TAR_SIZE_SIZE                = 12;
 static int TAR_MAX_BLOCK_LOAD_IN_MEMORY = 100;
@@ -175,7 +177,33 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
 #endif
                 break;
             }
-
+                
+            case 'L': // It's a File with a very long name
+            {
+                location += TAR_BLOCK_SIZE;
+                NSString *name = [NSFileManager longNameForObject:object atOffset:location]; // fix me
+#ifdef TAR_VERBOSE_LOG_MODE
+                NSLog(@"UNTAR - file - %@", name);
+#endif
+                NSString *filePath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
+                
+                location += TAR_BLOCK_SIZE;
+                NSUInteger size = [NSFileManager sizeForObject:object atOffset:location];
+                
+                if (size == 0) {
+#ifdef TAR_VERBOSE_LOG_MODE
+                    NSLog(@"UNTAR - empty_file - %@", filePath);
+#endif
+                    [@"" writeToFile:filePath atomically:YES encoding:NSUTF8StringEncoding error:error];
+                    break;
+                }
+                
+                blockCount += (size - 1) / TAR_BLOCK_SIZE + 1; // size/TAR_BLOCK_SIZE rounded up
+                
+                [self writeFileDataForObject:object atLocation:(location + TAR_BLOCK_SIZE) withLength:size atPath:filePath];
+                break;
+            }
+                
             case 'x': // It's an other header block
             {
                 blockCount++; //skip extended header block
@@ -241,6 +269,15 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
 
     memset(&nameBytes, '\0', TAR_NAME_SIZE + 1); // Fill byte array with nul char
     memcpy(&nameBytes, [self dataForObject:object inRange:NSMakeRange(offset + TAR_NAME_POSITION, TAR_NAME_SIZE) orLocation:offset + TAR_NAME_POSITION andLength:TAR_NAME_SIZE].bytes, TAR_NAME_SIZE);
+    return [NSString stringWithCString:nameBytes encoding:NSASCIIStringEncoding];
+}
+
++ (NSString *)longNameForObject:(id)object atOffset:(NSUInteger)offset
+{
+    char nameBytes[TAR_LONG_NAME_SIZE + 1]; // TAR_NAME_SIZE+1 for nul char at end
+    
+    memset(&nameBytes, '\0', TAR_LONG_NAME_SIZE + 1); // Fill byte array with nul char
+    memcpy(&nameBytes, [self dataForObject:object inRange:NSMakeRange(offset + TAR_LONG_NAME_POSITION, TAR_LONG_NAME_SIZE) orLocation:offset + TAR_LONG_NAME_POSITION andLength:TAR_LONG_NAME_SIZE].bytes, TAR_LONG_NAME_SIZE);
     return [NSString stringWithCString:nameBytes encoding:NSASCIIStringEncoding];
 }
 
