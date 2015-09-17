@@ -42,6 +42,7 @@ static int TAR_LONG_NAME_SIZE           = 512;
 static int TAR_SIZE_POSITION            = 124;
 static int TAR_SIZE_SIZE                = 12;
 static int TAR_MAX_BLOCK_LOAD_IN_MEMORY = 100;
+static char TAR_CORRUPTED_SENTINEL      = 'Z';
 
 // Error const
 NSString * const NSFileManagerLightUntarErrorDomain = @"com.lightuntar";
@@ -258,8 +259,15 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
 + (char)typeForObject:(id)object atOffset:(unsigned long long)offset
 {
     char type;
-
-    memcpy(&type, [self dataForObject:object inRange:NSMakeRange(offset + TAR_TYPE_POSITION, 1) orLocation:offset + TAR_TYPE_POSITION andLength:1].bytes, 1);
+  
+    NSData *data = [self dataForObject:object inRange:NSMakeRange(offset + TAR_TYPE_POSITION, 1) orLocation:offset + TAR_TYPE_POSITION andLength:1];
+  
+    if (data.bytes) {
+        memcpy(&type, data.bytes, 1);
+    } else {
+        type = TAR_CORRUPTED_SENTINEL;
+    }
+  
     return type;
 }
 
@@ -268,7 +276,13 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
     char nameBytes[TAR_NAME_SIZE + 1]; // TAR_NAME_SIZE+1 for nul char at end
 
     memset(&nameBytes, '\0', TAR_NAME_SIZE + 1); // Fill byte array with nul char
-    memcpy(&nameBytes, [self dataForObject:object inRange:NSMakeRange(offset + TAR_NAME_POSITION, TAR_NAME_SIZE) orLocation:offset + TAR_NAME_POSITION andLength:TAR_NAME_SIZE].bytes, TAR_NAME_SIZE);
+  
+    NSData *data = [self dataForObject:object inRange:NSMakeRange(offset + TAR_NAME_POSITION, TAR_NAME_SIZE) orLocation:offset + TAR_NAME_POSITION andLength:TAR_NAME_SIZE];
+  
+    if (data.bytes) {
+        memcpy(&nameBytes, data.bytes, TAR_NAME_SIZE);
+    }
+  
     return [NSString stringWithCString:nameBytes encoding:NSASCIIStringEncoding];
 }
 
@@ -277,7 +291,13 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
     char nameBytes[TAR_LONG_NAME_SIZE + 1]; // TAR_NAME_SIZE+1 for nul char at end
     
     memset(&nameBytes, '\0', TAR_LONG_NAME_SIZE + 1); // Fill byte array with nul char
-    memcpy(&nameBytes, [self dataForObject:object inRange:NSMakeRange(offset + TAR_LONG_NAME_POSITION, TAR_LONG_NAME_SIZE) orLocation:offset + TAR_LONG_NAME_POSITION andLength:TAR_LONG_NAME_SIZE].bytes, TAR_LONG_NAME_SIZE);
+  
+    NSData *data = [self dataForObject:object inRange:NSMakeRange(offset + TAR_LONG_NAME_POSITION, TAR_LONG_NAME_SIZE) orLocation:offset + TAR_LONG_NAME_POSITION andLength:TAR_LONG_NAME_SIZE];
+  
+    if (data.bytes) {
+        memcpy(&nameBytes, data.bytes, TAR_LONG_NAME_SIZE);
+    }
+  
     return [NSString stringWithCString:nameBytes encoding:NSASCIIStringEncoding];
 }
 
@@ -286,8 +306,17 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
     char sizeBytes[TAR_SIZE_SIZE + 1]; // TAR_SIZE_SIZE+1 for nul char at end
 
     memset(&sizeBytes, '\0', TAR_SIZE_SIZE + 1); // Fill byte array with nul char
-    memcpy(&sizeBytes, [self dataForObject:object inRange:NSMakeRange(offset + TAR_SIZE_POSITION, TAR_SIZE_SIZE) orLocation:offset + TAR_SIZE_POSITION andLength:TAR_SIZE_SIZE].bytes, TAR_SIZE_SIZE);
-    return strtol(sizeBytes, NULL, 8); // Size is an octal number, convert to decimal
+  
+    NSData *data = [self dataForObject:object inRange:NSMakeRange(offset + TAR_SIZE_POSITION, TAR_SIZE_SIZE) orLocation:offset + TAR_SIZE_POSITION andLength:TAR_SIZE_SIZE];
+  
+    unsigned long long resultSize = 0;
+  
+    if (data.bytes) {
+        memcpy(&sizeBytes, data.bytes, TAR_SIZE_SIZE);
+        resultSize = strtol(sizeBytes, NULL, 8); // Size is an octal number, convert to decimal
+    }
+  
+    return resultSize;
 }
 
 - (void)writeFileDataForObject:(id)object atLocation:(unsigned long long)location withLength:(unsigned long long)length atPath:(NSString *)path
@@ -321,14 +350,15 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
 
 + (NSData *)dataForObject:(id)object inRange:(NSRange)range orLocation:(unsigned long long)location andLength:(unsigned long long)length
 {
+    NSData* toReturn = nil;
     if ([object isKindOfClass:[NSData class]]) {
-        return [object subdataWithRange:range];
+        toReturn = [object subdataWithRange:range];
     } else if ([object isKindOfClass:[NSFileHandle class]]) {
         [object seekToFileOffset:location];
-        return [object readDataOfLength:length];
+        toReturn = [object readDataOfLength:length];
     }
-
-    return nil;
+  
+    return toReturn;
 }
 
 @end
