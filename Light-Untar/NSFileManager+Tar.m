@@ -36,10 +36,13 @@
 static int TAR_BLOCK_SIZE               = 512;
 static int TAR_TYPE_POSITION            = 156;
 static int TAR_NAME_POSITION            = 0;
+static int TAR_LONG_NAME_POSITION       = 0;
 static int TAR_NAME_SIZE                = 100;
+static int TAR_LONG_NAME_SIZE           = 512;
 static int TAR_SIZE_POSITION            = 124;
 static int TAR_SIZE_SIZE                = 12;
 static int TAR_MAX_BLOCK_LOAD_IN_MEMORY = 100;
+static char TAR_CORRUPTED_SENTINEL      = 'Z';
 
 // Error const
 NSString * const NSFileManagerLightUntarErrorDomain = @"com.lightuntar";
@@ -88,28 +91,28 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
                                progress:(NSFileManagerTarProgressBlock)progressBlock
 {
     NSFileManager *filemanager = [NSFileManager defaultManager];
-
+    
     if ([filemanager fileExistsAtPath:tarPath]) {
         NSDictionary *attributes = [filemanager attributesOfItemAtPath:tarPath error:error];
-
+        
         if (!attributes) {
             return NO;
         }
-
+        
         unsigned long long size = [[attributes objectForKey:NSFileSize] longLongValue];  //NSFileSize returns an NSNumber long long
         NSFileHandle *fileHandle = [NSFileHandle fileHandleForReadingAtPath:tarPath];
         BOOL result = [self createFilesAndDirectoriesAtPath:path withTarObject:fileHandle size:size error:error progress:progressBlock];
         [fileHandle closeFile];
         return result;
     }
-
+    
     NSDictionary *userInfo = [NSDictionary dictionaryWithObject:[NSString stringWithFormat:kNSFileManagerLightUntarNotFoundMessage, tarPath]
                                                          forKey:NSLocalizedDescriptionKey];
-
+    
     if (error != NULL) {
         *error = [NSError errorWithDomain:NSFileManagerLightUntarErrorDomain code:NSFileNoSuchFileError userInfo:userInfo];
     }
-
+    
     return NO;
 }
 
@@ -120,107 +123,135 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
                                progress:(NSFileManagerTarProgressBlock)progressBlock
 {
     [self createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil]; //Create path on filesystem
-
+    
     unsigned long long location = 0; // Position in the file
-
+    
     while (location < size) {
-        unsigned long long blockCount = 1; // 1 block for the header
-
-        // Call block progression to update info
-        if (progressBlock != nil) {
-            progressBlock((float)(location)/(float)(size));
-        }
-
-        int type = [NSFileManager typeForObject:object atOffset:location];
-        switch (type) {
-            case '0': // It's a File
-            {
-                NSString *name = [NSFileManager nameForObject:object atOffset:location];
+        @autoreleasepool {
+            unsigned long long blockCount = 1; // 1 block for the header
+            
+            // Call block progression to update info
+            if (progressBlock != nil) {
+                progressBlock((float)(location)/(float)(size));
+            }
+            
+            int type = [NSFileManager typeForObject:object atOffset:location];
+            switch (type) {
+                case '0': // It's a File
+                {
+                    NSString *name = [NSFileManager nameForObject:object atOffset:location];
 #ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - file - %@", name);
+                    NSLog(@"UNTAR - file - %@", name);
 #endif
-                NSString *filePath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
-
-                unsigned long long size = [NSFileManager sizeForObject:object atOffset:location];
-
-                if (size == 0) {
+                    NSString *filePath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
+                    
+                    unsigned long long size = [NSFileManager sizeForObject:object atOffset:location];
+                    
+                    if (size == 0) {
 #ifdef TAR_VERBOSE_LOG_MODE
-                    NSLog(@"UNTAR - empty_file - %@", filePath);
+                        NSLog(@"UNTAR - empty_file - %@", filePath);
 #endif
-                    [@"" writeToFile:filePath atomically:YES encoding:NSUTF8StringEncoding error:error];
+                        [@"" writeToFile:filePath atomically:YES encoding:NSUTF8StringEncoding error:error];
+                        break;
+                    }
+                    
+                    blockCount += (size - 1) / TAR_BLOCK_SIZE + 1; // size/TAR_BLOCK_SIZE rounded up
+                    
+                    [self writeFileDataForObject:object atLocation:(location + TAR_BLOCK_SIZE) withLength:size atPath:filePath];
+                    break;
+                }
+                    
+                case '5': // It's a directory
+                {
+                    NSString *name = [NSFileManager nameForObject:object atOffset:location];
+#ifdef TAR_VERBOSE_LOG_MODE
+                    NSLog(@"UNTAR - directory - %@", name);
+#endif
+                    NSString *directoryPath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
+                    [self createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:nil]; //Write the directory on filesystem
+                    break;
+                }
+                    
+                case '\0': // It's a nul block
+                {
+#ifdef TAR_VERBOSE_LOG_MODE
+                    NSLog(@"UNTAR - empty block");
+#endif
+                    break;
+                }
+                    
+                case 'L': // It's a File with a very long name
+                {
+                    location += TAR_BLOCK_SIZE;
+                    NSString *name = [NSFileManager longNameForObject:object atOffset:location]; // fix me
+#ifdef TAR_VERBOSE_LOG_MODE
+                    NSLog(@"UNTAR - file - %@", name);
+#endif
+                    NSString *filePath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
+                    
+                    location += TAR_BLOCK_SIZE;
+                    NSUInteger size = [NSFileManager sizeForObject:object atOffset:location];
+                    
+                    if (size == 0) {
+#ifdef TAR_VERBOSE_LOG_MODE
+                        NSLog(@"UNTAR - empty_file - %@", filePath);
+#endif
+                        [@"" writeToFile:filePath atomically:YES encoding:NSUTF8StringEncoding error:error];
+                        break;
+                    }
+                    
+                    blockCount += (size - 1) / TAR_BLOCK_SIZE + 1; // size/TAR_BLOCK_SIZE rounded up
+                    
+                    [self writeFileDataForObject:object atLocation:(location + TAR_BLOCK_SIZE) withLength:size atPath:filePath];
                     break;
                 }
 
-                blockCount += (size - 1) / TAR_BLOCK_SIZE + 1; // size/TAR_BLOCK_SIZE rounded up
-
-                [self writeFileDataForObject:object atLocation:(location + TAR_BLOCK_SIZE) withLength:size atPath:filePath];
-                break;
-            }
-
-            case '5': // It's a directory
-            {
-                NSString *name = [NSFileManager nameForObject:object atOffset:location];
-#ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - directory - %@", name);
-#endif
-                NSString *directoryPath = [path stringByAppendingPathComponent:name]; // Create a full path from the name
-                [self createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:nil]; //Write the directory on filesystem
-                break;
-            }
-
-            case '\0': // It's a nul block
-            {
-#ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - empty block");
-#endif
-                break;
-            }
-
-            case 'x': // It's an other header block
-            {
-                blockCount++; //skip extended header block
-                break;
-            }
-
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '6':
-            case '7':
-            case 'g': // It's not a file neither a directory
-            {
-#ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - unsupported block");
-#endif
-                unsigned long long size = [NSFileManager sizeForObject:object atOffset:location];
-                blockCount += ceil(size / TAR_BLOCK_SIZE);
-                break;
-            }
-
-            default: // It's not a tar type
-            {
-#ifdef TAR_VERBOSE_LOG_MODE
-                NSLog(@"UNTAR - invalid block type %c",type);
-#endif
-
-                NSDictionary *userInfo = [NSDictionary dictionaryWithObject:[NSString stringWithFormat:kNSFileManagerLightUntarCorruptFileMessage, type]
-                                                                     forKey:NSLocalizedDescriptionKey];
-
-                if (error != NULL) {
-                    *error = [NSError errorWithDomain:NSFileManagerLightUntarErrorDomain code:NSFileReadCorruptFileError userInfo:userInfo];
+                case 'x': // It's an other header block
+                {
+                    blockCount++; //skip extended header block
+                    break;
                 }
 
-                return NO;
-            }
-        }
-
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '6':
+                case '7':
+                case 'g': // It's not a file neither a directory
+                {
 #ifdef TAR_VERBOSE_LOG_MODE
-        NSLog(@"UNTAR - Blocks count  : %lld", blockCount);
-        NSLog(@"----------------------------------------\n");
+                    NSLog(@"UNTAR - unsupported block");
+#endif
+                    unsigned long long size = [NSFileManager sizeForObject:object atOffset:location];
+                    blockCount += ceil(size / TAR_BLOCK_SIZE);
+                    break;
+                }
+
+                default: // It's not a tar type
+                {
+#ifdef TAR_VERBOSE_LOG_MODE
+                    NSLog(@"UNTAR - invalid block type %c",type);
 #endif
 
-        location += blockCount * TAR_BLOCK_SIZE;
+                    NSDictionary *userInfo = [NSDictionary dictionaryWithObject:[NSString stringWithFormat:kNSFileManagerLightUntarCorruptFileMessage, type]
+                                                                         forKey:NSLocalizedDescriptionKey];
+                    
+                    if (error != NULL) {
+                        *error = [NSError errorWithDomain:NSFileManagerLightUntarErrorDomain code:NSFileReadCorruptFileError userInfo:userInfo];
+                    }
+
+                    return NO;
+                }
+            }
+        
+#ifdef TAR_VERBOSE_LOG_MODE
+            NSLog(@"UNTAR - Blocks count  : %lld", blockCount);
+            NSLog(@"----------------------------------------\n");
+#endif
+
+            location += blockCount * TAR_BLOCK_SIZE;
+        }
     }
     return YES;
 }
@@ -231,7 +262,14 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
 {
     char type;
 
-    memcpy(&type, [self dataForObject:object inRange:NSMakeRange(offset + TAR_TYPE_POSITION, 1) orLocation:offset + TAR_TYPE_POSITION andLength:1].bytes, 1);
+    NSData *data = [self dataForObject:object inRange:NSMakeRange(offset + TAR_TYPE_POSITION, 1) orLocation:offset + TAR_TYPE_POSITION andLength:1];
+
+    if (data.bytes) {
+        memcpy(&type, data.bytes, 1);
+    } else {
+        type = TAR_CORRUPTED_SENTINEL;
+    }
+
     return type;
 }
 
@@ -240,7 +278,28 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
     char nameBytes[TAR_NAME_SIZE + 1]; // TAR_NAME_SIZE+1 for nul char at end
 
     memset(&nameBytes, '\0', TAR_NAME_SIZE + 1); // Fill byte array with nul char
-    memcpy(&nameBytes, [self dataForObject:object inRange:NSMakeRange(offset + TAR_NAME_POSITION, TAR_NAME_SIZE) orLocation:offset + TAR_NAME_POSITION andLength:TAR_NAME_SIZE].bytes, TAR_NAME_SIZE);
+
+    NSData *data = [self dataForObject:object inRange:NSMakeRange(offset + TAR_NAME_POSITION, TAR_NAME_SIZE) orLocation:offset + TAR_NAME_POSITION andLength:TAR_NAME_SIZE];
+
+    if (data.bytes) {
+        memcpy(&nameBytes, data.bytes, TAR_NAME_SIZE);
+    }
+
+    return [NSString stringWithCString:nameBytes encoding:NSASCIIStringEncoding];
+}
+
++ (NSString *)longNameForObject:(id)object atOffset:(NSUInteger)offset
+{
+    char nameBytes[TAR_LONG_NAME_SIZE + 1]; // TAR_NAME_SIZE+1 for nul char at end
+    
+    memset(&nameBytes, '\0', TAR_LONG_NAME_SIZE + 1); // Fill byte array with nul char
+
+    NSData *data = [self dataForObject:object inRange:NSMakeRange(offset + TAR_LONG_NAME_POSITION, TAR_LONG_NAME_SIZE) orLocation:offset + TAR_LONG_NAME_POSITION andLength:TAR_LONG_NAME_SIZE];
+
+    if (data.bytes) {
+        memcpy(&nameBytes, data.bytes, TAR_LONG_NAME_SIZE);
+    }
+
     return [NSString stringWithCString:nameBytes encoding:NSASCIIStringEncoding];
 }
 
@@ -249,14 +308,28 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
     char sizeBytes[TAR_SIZE_SIZE + 1]; // TAR_SIZE_SIZE+1 for nul char at end
 
     memset(&sizeBytes, '\0', TAR_SIZE_SIZE + 1); // Fill byte array with nul char
-    memcpy(&sizeBytes, [self dataForObject:object inRange:NSMakeRange(offset + TAR_SIZE_POSITION, TAR_SIZE_SIZE) orLocation:offset + TAR_SIZE_POSITION andLength:TAR_SIZE_SIZE].bytes, TAR_SIZE_SIZE);
-    return strtol(sizeBytes, NULL, 8); // Size is an octal number, convert to decimal
+
+    NSData *data = [self dataForObject:object inRange:NSMakeRange(offset + TAR_SIZE_POSITION, TAR_SIZE_SIZE) orLocation:offset + TAR_SIZE_POSITION andLength:TAR_SIZE_SIZE];
+
+    unsigned long long resultSize = 0;
+
+    if (data.bytes) {
+        memcpy(&sizeBytes, data.bytes, TAR_SIZE_SIZE);
+        resultSize = strtol(sizeBytes, NULL, 8); // Size is an octal number, convert to decimal
+    }
+
+    return resultSize;
 }
 
 - (void)writeFileDataForObject:(id)object atLocation:(unsigned long long)location withLength:(unsigned long long)length atPath:(NSString *)path
 {
     if ([object isKindOfClass:[NSData class]]) {
-        [self createFileAtPath:path contents:[object subdataWithRange:NSMakeRange(location, length)] attributes:nil]; //Write the file on filesystem
+        if([self createDirectoryAtPath: path.stringByDeletingLastPathComponent withIntermediateDirectories: YES attributes: nil error:nil]) {
+            NSData *subData = [object subdataWithRange:NSMakeRange(location, length)];
+            if (subData) {
+                [self createFileAtPath:path contents:subData attributes:nil]; //Write the file on filesystem
+            }
+        }
     } else if ([object isKindOfClass:[NSFileHandle class]]) {
         if ([[NSData data] writeToFile:path atomically:NO]) {
             NSFileHandle *destinationFile = [NSFileHandle fileHandleForWritingAtPath:path];
@@ -279,14 +352,15 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
 
 + (NSData *)dataForObject:(id)object inRange:(NSRange)range orLocation:(unsigned long long)location andLength:(unsigned long long)length
 {
+    NSData* toReturn = nil;
     if ([object isKindOfClass:[NSData class]]) {
-        return [object subdataWithRange:range];
+        toReturn = [object subdataWithRange:range];
     } else if ([object isKindOfClass:[NSFileHandle class]]) {
         [object seekToFileOffset:location];
-        return [object readDataOfLength:length];
+        toReturn = [object readDataOfLength:length];
     }
 
-    return nil;
+    return toReturn;
 }
 
 @end
