@@ -255,6 +255,7 @@ static NSString * const kNSFileManagerLightUntarCorruptFileMessage = @"Invalid b
 
 - (void)writeFileDataForObject:(id)object atLocation:(unsigned long long)location withLength:(unsigned long long)length atPath:(NSString *)path
 {
+    [self createDirectoryAtPath:[path stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:nil];
     if ([object isKindOfClass:[NSData class]]) {
         [self createFileAtPath:path contents:[object subdataWithRange:NSMakeRange(location, length)] attributes:nil]; //Write the file on filesystem
     } else if ([object isKindOfClass:[NSFileHandle class]]) {
